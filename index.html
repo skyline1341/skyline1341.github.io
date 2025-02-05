@@ -113,9 +113,9 @@
         }
     }
 
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    document.querySelector('body').addEventListener('mousedown', onMouseDown);
+    document.querySelector('body').addEventListener('mousemove', onMouseMove);
+    document.querySelector('body').addEventListener('mouseup', onMouseUp);
 
     // Выбор плиток для удаления
     let selectedTiles = [];
@@ -184,7 +184,7 @@
         return Math.abs(pos1.x - pos2.x) < 0.1 && Math.abs(pos1.y - pos2.y) < 0.1;
     }
 
-    window.addEventListener('click', onClick);
+    document.querySelector('body').addEventListener('click', onClick);
 
     // Обновление размеров окна
     function onWindowResize() {
