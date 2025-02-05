@@ -32,27 +32,17 @@
     directionalLight.position.set(10, 10, 10); // Позиция источника света
     scene.add(directionalLight);
 
-    // Загрузка текстур оружия
-    const textureLoader = new THREE.TextureLoader();
-    const weaponTextures = [
-        textureLoader.load('./Desert_Eagle.webp'),
-        textureLoader.load('./Dual_Berettas.webp'),
-        textureLoader.load('./Glock-18.webp'),
-        textureLoader.load('./USP-S.webp'),
-        textureLoader.load('./R8_Revolver.webp'),
-        textureLoader.load('./P250.webp')
-    ];
-
     // Создание сетки плиток
     const tileGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
     const tiles = [];
     const grid = { rows: 9, columns: 9, depth: 9 };
 
-    function createTile(x, y, z, textureIndex) {
-        const material = new THREE.MeshStandardMaterial({ map: weaponTextures[textureIndex] });
+    function createTile(x, y, z, colorIndex) {
+        const material = new THREE.MeshStandardMaterial({ color: colors[colorIndex] });
         const tile = new THREE.Mesh(tileGeometry, material);
         tile.position.set(x, y, z);
-        tile.textureIndex = textureIndex; // Сохраняем индекс текстуры для сравнения
+        tile.colorIndex = colorIndex; // Сохраняем индекс цвета для сравнения
 
         // Добавляем ребра куба
         const edges = new THREE.EdgesGeometry(tileGeometry);
@@ -68,8 +58,8 @@
     for (let i = 0; i < grid.rows; i++) {
         for (let j = 0; j < grid.columns; j++) {
             for (let k = 0; k < grid.depth; k++) {
-                const textureIndex = Math.floor(Math.random() * weaponTextures.length);
-                createTile(i * 1.1 - 4, j * 1.1 - 4, k * 1.1 - 4, textureIndex);
+                const colorIndex = Math.floor(Math.random() * colors.length);
+                createTile(i * 1.1 - 4, j * 1.1 - 4, k * 1.1 - 4, colorIndex);
             }
         }
     }
@@ -162,8 +152,8 @@
                 }
 
                 if (selectedTiles.length === 3) {
-                    const firstTextureIndex = selectedTiles[0].textureIndex;
-                    if (selectedTiles.every(tile => tile.textureIndex === firstTextureIndex)) {
+                    const firstColor = selectedTiles[0].colorIndex;
+                    if (selectedTiles.every(tile => tile.colorIndex === firstColor)) {
                         selectedTiles.forEach(tile => {
                             scene.remove(tile);
                             tiles.splice(tiles.indexOf(tile), 1);
