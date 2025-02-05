@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Mahjong Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<script src="three.js"></script>
+<script>
+    // Инициализация сцены, камеры и рендера
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Добавление освещения
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Тусклое общее освещение
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Направленный свет
+    directionalLight.position.set(10, 10, 10); // Позиция источника света
+    scene.add(directionalLight);
+
+    // Загрузка текстур оружия
+    const textureLoader = new THREE.TextureLoader();
+    const weaponTextures = [
+        textureLoader.load('./Desert_Eagle.webp'),
+        textureLoader.load('./Dual_Berettas.webp'),
+        textureLoader.load('./Glock-18.webp'),
+        textureLoader.load('./USP-S.webp'),
+        textureLoader.load('./R8_Revolver.webp'),
+        textureLoader.load('./P250.webp')
+    ];
+
+    // Создание сетки плиток
+    const tileGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const tiles = [];
+    const grid = { rows: 9, columns: 9, depth: 9 };
+
+    function createTile(x, y, z, textureIndex) {
+        const material = new THREE.MeshStandardMaterial({ map: weaponTextures[textureIndex] });
+        const tile = new THREE.Mesh(tileGeometry, material);
+        tile.position.set(x, y, z);
+        tile.textureIndex = textureIndex; // Сохраняем индекс текстуры для сравнения
+
+        // Добавляем ребра куба
+        const edges = new THREE.EdgesGeometry(tileGeometry);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 }); // Черные ребра
+        const wireframe = new THREE.LineSegments(edges, lineMaterial);
+        tile.add(wireframe);
+
+        scene.add(tile);
+        tiles.push(tile);
+    }
+
+    // Генерация случайных плиток
+    for (let i = 0; i < grid.rows; i++) {
+        for (let j = 0; j < grid.columns; j++) {
+            for (let k = 0; k < grid.depth; k++) {
+                const textureIndex = Math.floor(Math.random() * weaponTextures.length);
+                createTile(i * 1.1 - 4, j * 1.1 - 4, k * 1.1 - 4, textureIndex);
+            }
+        }
+    }
+
+    // Управление камерой
+    let isDragging = false;
+    let prevMouseX = 0;
+    let prevMouseY = 0;
+
+    const center = new THREE.Vector3(0, 0, 0); // Центр куба
+    const distance = 20; // Расстояние от камеры до центра
+
+    camera.position.set(distance, distance, distance); // Начальная позиция камеры
+    camera.lookAt(center);
+
+    function onMouseDown(event) {
+        if (event.button === 0) { // Левая кнопка мыши
+            isDragging = true;
+            prevMouseX = event.clientX;
+            prevMouseY = event.clientY;
+        }
+    }
+
+    function onMouseMove(event) {
+        if (!isDragging) return;
+
+        const deltaX = event.clientX - prevMouseX;
+        const deltaY = event.clientY - prevMouseY;
+
+        // Вращение камеры вокруг центра
+        const theta = THREE.MathUtils.degToRad(deltaX * 0.5); // Скорость вращения по горизонтали
+        const phi = THREE.MathUtils.degToRad(deltaY * 0.5);   // Скорость вращения по вертикали
+
+        const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(center));
+        spherical.theta -= theta;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - phi)); // Ограничение вертикального угла
+
+        // Преобразование сферических координат в декартовы
+        const targetPosition = new THREE.Vector3().setFromSpherical(spherical);
+
+        camera.position.copy(center).add(targetPosition);
+        camera.lookAt(center);
+
+        prevMouseX = event.clientX;
+        prevMouseY = event.clientY;
+    }
+
+    function onMouseUp(event) {
+        if (event.button === 0) { // Левая кнопка мыши
+            isDragging = false;
+        }
+    }
+
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    // Выбор плиток для удаления
+    let selectedTiles = [];
+
+    function onClick(event) {
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(tiles, true);
+
+        if (intersects.length > 0) {
+            // Находим первый реальный кубик (пропускаем ребра)
+            let intersectedTile = null;
+            for (const intersect of intersects) {
+                if (intersect.object instanceof THREE.Mesh && intersect.object.material) {
+                    intersectedTile = intersect.object;
+                    break;
+                }
+            }
+
+            if (intersectedTile && intersectedTile.visible && !isTileBlocked(intersectedTile)) {
+                if (selectedTiles.includes(intersectedTile)) {
+                    selectedTiles.splice(selectedTiles.indexOf(intersectedTile), 1);
+                    intersectedTile.material.emissive.set(0x000000); // Сброс свечения
+                } else {
+                    if (selectedTiles.length < 3) {
+                        selectedTiles.push(intersectedTile);
+                        intersectedTile.material.emissive.set(0xffffff); // Добавляем свечение
+                    }
+                }
+
+                if (selectedTiles.length === 3) {
+                    const firstTextureIndex = selectedTiles[0].textureIndex;
+                    if (selectedTiles.every(tile => tile.textureIndex === firstTextureIndex)) {
+                        selectedTiles.forEach(tile => {
+                            scene.remove(tile);
+                            tiles.splice(tiles.indexOf(tile), 1);
+                        });
+                        selectedTiles = [];
+                    } else {
+                        selectedTiles.forEach(tile => tile.material.emissive.set(0x000000));
+                        selectedTiles = [];
+                    }
+                }
+            }
+        }
+    }
+
+    // Проверка, блокирует ли другой кубик данный
+    function isTileBlocked(tile) {
+        const position = tile.position;
+        for (const t of tiles) {
+            if (t !== tile && arePositionsAligned(position, t.position) && t.position.z > position.z) {
+                return true; // Кубик блокируется другим
+            }
+        }
+        return false;
+    }
+
+    // Проверка совпадения координат по x и y
+    function arePositionsAligned(pos1, pos2) {
+        return Math.abs(pos1.x - pos2.x) < 0.1 && Math.abs(pos1.y - pos2.y) < 0.1;
+    }
+
+    window.addEventListener('click', onClick);
+
+    // Обновление размеров окна
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.addEventListener('resize', onWindowResize);
+
+    // Анимация
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+
+    animate();
+</script>
+</body>
+</html>
