@@ -1,207 +1,93 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Mahjong Game</title>
+    <title>Plane Game</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-        }
-        canvas {
-            display: block;
-        }
+        body { margin: 0; overflow: hidden; }
     </style>
 </head>
 <body>
-<script src="three.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.174.0/+esm"></script>
+<script src="https://cdn.jsdelivr.net/npm/gltf-loader@1.0.0/index.min.js"></script>
 <script>
-    // Инициализация сцены, камеры и рендера
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+// Инициализация основных объектов
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x87CEEB, 0.05); // Туман небесного цвета
 
-    // Добавление освещения
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); // Тусклое общее освещение
-    scene.add(ambientLight);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 5, 10);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Направленный свет
-    directionalLight.position.set(10, 10, 10); // Позиция источника света
-    scene.add(directionalLight);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-    // Создание сетки плиток
-    const tileGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
-    const tiles = [];
-    const grid = { rows: 9, columns: 9, depth: 9 };
+// Создание куба с текстурами
+const cubeSize = 100;
+const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+const materials = [
+    new THREE.MeshBasicMaterial({ color: 0x0066FF }), // Front (Z+)
+    new THREE.MeshBasicMaterial({ color: 0x0066FF }), // Back (Z-)
+    new THREE.MeshBasicMaterial({ color: 0x0066FF }), // Top (Y+)
+    new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load('grass.jpg') }), // Bottom (Y-)
+    new THREE.MeshBasicMaterial({ color: 0x0066FF }), // Left (X-)
+    new THREE.MeshBasicMaterial({ color: 0x0066FF }) // Right (X+)
+];
+const cube = new THREE.Mesh(cubeGeometry, materials);
+scene.add(cube);
 
-    function createTile(x, y, z, colorIndex) {
-        const material = new THREE.MeshStandardMaterial({ color: colors[colorIndex] });
-        const tile = new THREE.Mesh(tileGeometry, material);
-        tile.position.set(x, y, z);
-        tile.colorIndex = colorIndex; // Сохраняем индекс цвета для сравнения
+// Добавление источника света (солнце)
+const light = new THREE.PointLight(0xffffff, 1, 1000);
+light.position.set(0, 50, 0);
+scene.add(light);
 
-        // Добавляем ребра куба
-        const edges = new THREE.EdgesGeometry(tileGeometry);
-        const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 }); // Черные ребра
-        const wireframe = new THREE.LineSegments(edges, lineMaterial);
-        tile.add(wireframe);
+// Загрузка модели самолета
+let plane;
+const loader = new THREE.GLTFLoader();
+loader.load('plane.gltf', (gltf) => {
+    plane = gltf.scene;
+    scene.add(plane);
+    animate(); // Запуск анимации после загрузки модели
+}, undefined, (error) => console.error(error));
 
-        scene.add(tile);
-        tiles.push(tile);
-    }
+// Управление клавиатуры
+const keys = {};
+document.addEventListener('keydown', (e) => keys[e.code] = true);
+document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-    // Генерация случайных плиток
-    for (let i = 0; i < grid.rows; i++) {
-        for (let j = 0; j < grid.columns; j++) {
-            for (let k = 0; k < grid.depth; k++) {
-                const colorIndex = Math.floor(Math.random() * colors.length);
-                createTile(i * 1.1 - 4, j * 1.1 - 4, k * 1.1 - 4, colorIndex);
-            }
-        }
-    }
+// Константы
+const speed = 0.2;
+const rotationSpeed = 0.05;
 
-    // Управление камерой
-    let isDragging = false;
-    let prevMouseX = 0;
-    let prevMouseY = 0;
+function animate() {
+    requestAnimationFrame(animate);
+    
+    if (!plane) return; // Ожидание загрузки модели
 
-    const center = new THREE.Vector3(0, 0, 0); // Центр куба
-    const distance = 20; // Расстояние от камеры до центра
+    // Управление поворотом самолета
+    if (keys.ArrowLeft) plane.rotation.y -= rotationSpeed;
+    if (keys.ArrowRight) plane.rotation.y += rotationSpeed;
+    if (keys.ArrowUp) plane.rotation.x -= rotationSpeed;
+    if (keys.ArrowDown) plane.rotation.x += rotationSpeed;
 
-    camera.position.set(distance, distance, distance); // Начальная позиция камеры
-    camera.lookAt(center);
+    // Ограничение наклона (pitch)
+    plane.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, plane.rotation.x));
 
-    function onMouseDown(event) {
-        if (event.button === 0) { // Левая кнопка мыши
-            isDragging = true;
-            prevMouseX = event.clientX;
-            prevMouseY = event.clientY;
-        }
-    }
+    // Движение самолета в направлении своего yaw и pitch
+    const direction = new THREE.Vector3(
+        Math.sin(plane.rotation.y),
+        Math.sin(plane.rotation.x),
+        Math.cos(plane.rotation.y)
+    );
+    plane.position.add(direction.multiplyScalar(speed));
 
-    function onMouseMove(event) {
-        if (!isDragging) return;
+    // Обновление позиции камеры (следит за самолетом сзади)
+    camera.position.copy(plane.position);
+    camera.position.x -= Math.sin(plane.rotation.y) * 10;
+    camera.position.z -= Math.cos(plane.rotation.y) * 10;
+    camera.lookAt(plane.position);
 
-        const deltaX = event.clientX - prevMouseX;
-        const deltaY = event.clientY - prevMouseY;
-
-        // Вращение камеры вокруг центра
-        const theta = THREE.MathUtils.degToRad(deltaX * 0.5); // Скорость вращения по горизонтали
-        const phi = THREE.MathUtils.degToRad(deltaY * 0.5);   // Скорость вращения по вертикали
-
-        const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(center));
-        spherical.theta -= theta;
-        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - phi)); // Ограничение вертикального угла
-
-        // Преобразование сферических координат в декартовы
-        const targetPosition = new THREE.Vector3().setFromSpherical(spherical);
-
-        camera.position.copy(center).add(targetPosition);
-        camera.lookAt(center);
-
-        prevMouseX = event.clientX;
-        prevMouseY = event.clientY;
-    }
-
-    function onMouseUp(event) {
-        if (event.button === 0) { // Левая кнопка мыши
-            isDragging = false;
-        }
-    }
-
-    document.querySelector('body').addEventListener('mousedown', onMouseDown);
-    document.querySelector('body').addEventListener('mousemove', onMouseMove);
-    document.querySelector('body').addEventListener('mouseup', onMouseUp);
-
-    // Выбор плиток для удаления
-    let selectedTiles = [];
-
-    function onClick(event) {
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-        raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(tiles, true);
-
-        if (intersects.length > 0) {
-            // Находим первый реальный кубик (пропускаем ребра)
-            let intersectedTile = null;
-            for (const intersect of intersects) {
-                if (intersect.object instanceof THREE.Mesh && intersect.object.material) {
-                    intersectedTile = intersect.object;
-                    break;
-                }
-            }
-
-            if (intersectedTile && intersectedTile.visible && !isTileBlocked(intersectedTile)) {
-                if (selectedTiles.includes(intersectedTile)) {
-                    selectedTiles.splice(selectedTiles.indexOf(intersectedTile), 1);
-                    intersectedTile.material.emissive.set(0x000000); // Сброс свечения
-                } else {
-                    if (selectedTiles.length < 3) {
-                        selectedTiles.push(intersectedTile);
-                        intersectedTile.material.emissive.set(0xffffff); // Добавляем свечение
-                    }
-                }
-
-                if (selectedTiles.length === 3) {
-                    const firstColor = selectedTiles[0].colorIndex;
-                    if (selectedTiles.every(tile => tile.colorIndex === firstColor)) {
-                        selectedTiles.forEach(tile => {
-                            scene.remove(tile);
-                            tiles.splice(tiles.indexOf(tile), 1);
-                        });
-                        selectedTiles = [];
-                    } else {
-                        selectedTiles.forEach(tile => tile.material.emissive.set(0x000000));
-                        selectedTiles = [];
-                    }
-                }
-            }
-        }
-    }
-
-    // Проверка, блокирует ли другой кубик данный
-    function isTileBlocked(tile) {
-        const position = tile.position;
-        for (const t of tiles) {
-            if (t !== tile && arePositionsAligned(position, t.position) && t.position.z > position.z) {
-                return true; // Кубик блокируется другим
-            }
-        }
-        return false;
-    }
-
-    // Проверка совпадения координат по x и y
-    function arePositionsAligned(pos1, pos2) {
-        return Math.abs(pos1.x - pos2.x) < 0.1 && Math.abs(pos1.y - pos2.y) < 0.1;
-    }
-
-    document.querySelector('body').addEventListener('click', onClick);
-
-    // Обновление размеров окна
-    function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    window.addEventListener('resize', onWindowResize);
-
-    // Анимация
-    function animate() {
-        requestAnimationFrame(animate);
-        renderer.render(scene, camera);
-    }
-
-    animate();
+    renderer.render(scene, camera);
+}
 </script>
 </body>
 </html>
